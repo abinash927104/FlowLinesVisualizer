@@ -4,8 +4,14 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
-import cv2
 from PIL import Image
+
+# Try to import cv2, with fallback for environments where it's not available
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
 
 # Page configuration
 st.set_page_config(
@@ -262,6 +268,39 @@ def compute_streakline(x, y, u, v, injection_point, num_particles, time_steps):
 # Image processing functions
 def detect_flow_patterns(image):
     """Detect flow patterns using optical flow and image processing"""
+    if not CV2_AVAILABLE:
+        # Fallback implementation using numpy only
+        # Convert to grayscale
+        if len(image.shape) == 3:
+            gray = np.dot(image[...,:3], [0.2989, 0.5870, 0.1140])
+        else:
+            gray = image
+        
+        # Simple Gaussian blur using convolution (basic implementation)
+        blurred = gray.astype(float)
+        # Simple gradient using numpy
+        grad_x = np.gradient(blurred, axis=1)
+        grad_y = np.gradient(blurred, axis=0)
+        magnitude = np.sqrt(grad_x**2 + grad_y**2)
+        angle = np.arctan2(grad_y, grad_x)
+        
+        # Simple edge threshold
+        threshold = magnitude.mean() + magnitude.std()
+        edges = (magnitude > threshold).astype(np.uint8) * 255
+        
+        # No contour detection without cv2 - return empty list
+        contours = []
+        
+        return {
+            'edges': edges,
+            'contours': contours,
+            'magnitude': magnitude,
+            'angle': angle,
+            'grad_x': grad_x,
+            'grad_y': grad_y
+        }
+    
+    # OpenCV implementation (preferred)
     # Convert to grayscale
     if len(image.shape) == 3:
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
@@ -548,6 +587,9 @@ elif page == "📸 Image Analysis":
     </div>
     """, unsafe_allow_html=True)
     
+    if not CV2_AVAILABLE:
+        st.warning("⚠️ **Note:** OpenCV is not available in this environment. Image processing will use a basic fallback implementation. Contour detection may be limited.")
+    
     uploaded_file = st.file_uploader(
         "Choose an image file",
         type=['png', 'jpg', 'jpeg'],
@@ -591,7 +633,8 @@ elif page == "📸 Image Analysis":
             
             # Contours
             contour_img = image_array.copy()
-            cv2.drawContours(contour_img, processed['contours'], -1, (0, 255, 0), 2)
+            if CV2_AVAILABLE and len(processed['contours']) > 0:
+                cv2.drawContours(contour_img, processed['contours'], -1, (0, 255, 0), 2)
             axes[1, 1].imshow(contour_img)
             axes[1, 1].set_title(f"Detected Patterns ({len(processed['contours'])} contours)")
             axes[1, 1].axis('off')
